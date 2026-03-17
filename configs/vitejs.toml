@@ -1,0 +1,34 @@
+# Parry configuration for Vite + React projects
+
+[general]
+strict = false
+fail_fast = false
+
+[output]
+format = "human"
+show_paths = true
+
+[tailwind]
+enabled = true
+config_path = "tailwind.config.js"
+
+safe_list = [
+    "p-*",
+    "m-*",
+    "w-*",
+    "h-*",
+    "text-*",
+    "bg-*",
+    "flex",
+    "grid",
+]
+
+[imports]
+enforce_alias = true
+
+[imports.alias_map]
+"@/" = "./src"
+
+[components]
+enforce_shadcn = true
+shadcn_path = "@/components/ui"

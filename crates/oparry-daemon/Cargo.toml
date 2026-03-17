@@ -1,0 +1,52 @@
+[package]
+name = "oparry-daemon"
+version.workspace = true
+edition.workspace = true
+description = "Background daemon for automatic code validation and Claude Code session detection"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+documentation = "https://docs.rs/oparry-daemon"
+keywords = ["daemon", "background", "validation", "claude"]
+categories = ["development-tools"]
+
+[[bin]]
+name = "parryd"
+path = "src/main.rs"
+
+[dependencies]
+# Core
+oparry-core = { version = "0.2", path = "../oparry-core" }
+oparry-parser = { version = "0.2", path = "../oparry-parser" }
+oparry-validators = { version = "0.2", path = "../oparry-validators" }
+oparry-watcher = { version = "0.2", path = "../oparry-watcher" }
+oparry-wrapper = { version = "0.2", path = "../oparry-wrapper" }
+
+# Workspace dependencies
+tokio = { workspace = true, features = ["full", "process", "fs", "io-util"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+regex = { workspace = true }
+glob = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+
+# Daemon-specific
+sysinfo = { workspace = true }
+walkdir = { workspace = true }
+dirs = { workspace = true }
+toml = { workspace = true }
+
+# CLI
+clap = { workspace = true, features = ["derive", "env"] }
+colored = { workspace = true }
+console = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.8"
+pretty_assertions = "1.4"
+proptest = { workspace = true }

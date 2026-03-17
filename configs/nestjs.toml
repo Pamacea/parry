@@ -1,0 +1,22 @@
+# Parry configuration for NestJS projects
+
+[general]
+strict = false
+fail_fast = false
+
+[output]
+format = "human"
+show_paths = true
+
+[imports]
+enforce_alias = true
+
+[imports.alias_map]
+"@/" = "./src"
+"@/common" = "./src/common"
+"@/modules" = "./src/modules"
+
+[nestjs]
+enabled = true
+enforce_decorators = true
+validate_modules = true

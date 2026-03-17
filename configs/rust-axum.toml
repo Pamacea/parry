@@ -1,0 +1,15 @@
+# Parry configuration for Rust + Axum projects
+
+[general]
+strict = true
+fail_fast = false
+
+[output]
+format = "human"
+show_paths = true
+
+[rust]
+enabled = true
+deny_unsafe = "warn"
+warn_unwrap = true
+enforce_result_handling = true

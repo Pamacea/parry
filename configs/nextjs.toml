@@ -1,0 +1,51 @@
+# Parry configuration for Next.js projects
+
+[general]
+strict = false
+fail_fast = false
+
+[output]
+format = "human"
+show_paths = true
+
+[tailwind]
+enabled = true
+config_path = "tailwind.config.ts"
+
+safe_list = [
+    "p-*",
+    "m-*",
+    "w-*",
+    "h-*",
+    "text-*",
+    "bg-*",
+    "flex",
+    "grid",
+    "items-*",
+    "justify-*",
+    "gap-*",
+    "rounded-*",
+    "shadow-*",
+]
+
+block_list = [
+    "bg-red-500",
+    "bg-yellow-500",
+]
+
+[imports]
+enforce_alias = true
+
+[imports.alias_map]
+"@/" = "./src"
+"@/components" = "./components"
+"@/lib" = "./lib"
+
+[components]
+enforce_shadcn = true
+shadcn_path = "@/components/ui"
+
+[nextjs]
+enabled = true
+enforce_app_router = true
+validate_page_exports = true

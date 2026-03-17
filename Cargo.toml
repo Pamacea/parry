@@ -1,0 +1,75 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/oparry-core",
+    "crates/oparry-parser",
+    "crates/oparry-validators",
+    "crates/oparry-watcher",
+    "crates/oparry-wrapper",
+    "crates/oparry-cli",
+    "crates/oparry-daemon",
+    "crates/oparry-autofix",
+]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.75.0"
+authors = ["Yanis <yanis@example.com>"]
+license = "MIT"
+repository = "https://github.com/Pamacea/parry"
+homepage = "https://github.com/Pamacea/parry"
+description = "The Agentic Linter for AI-Generated Code"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Parsing (full Oxc suite - correct package names with underscores)
+oxc_parser = "0.30"
+oxc_ast = "0.30"
+oxc_span = "0.30"
+oxc_syntax = "0.30"
+oxc_semantic = "0.30"
+oxc_traverse = "0.30"
+oxc_allocator = "0.30"
+
+# Rust parsing
+syn = { version = "2.0", features = ["full", "extra-traits", "visit"] }
+quote = "1.0"
+
+# CLI
+clap = { version = "4.4", features = ["derive", "env"] }
+colored = "2.1"
+console = "0.15"
+
+# File watching
+notify = "6.1"
+
+# Utilities
+regex = "1.10"
+glob = "0.3"
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Configuration
+toml = "0.8"
+dirs = "5.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Daemon-specific
+sysinfo = "0.30"
+walkdir = "2.5"
+
+# Testing
+proptest = "1.4"

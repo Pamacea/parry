@@ -1,0 +1,39 @@
+{
+  "name": "@parry-org/claude-hook",
+  "version": "0.2.0",
+  "description": "Claude Code integration hook for Parry linter",
+  "main": "claude-hook.js",
+  "bin": {
+    "parry-claude-hook": "./claude-hook.js"
+  },
+  "scripts": {
+    "test": "node claude-hook.js --help",
+    "install": "node claude-hook.js --install"
+  },
+  "keywords": [
+    "parry",
+    "claude",
+    "lint",
+    "validation",
+    "code-quality"
+  ],
+  "author": "Parry Contributors",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "files": [
+    "claude-hook.js",
+    "claude-hook.py",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/parry-org/parry.git",
+    "directory": "integrations"
+  },
+  "bugs": {
+    "url": "https://github.com/parry-org/parry/issues"
+  },
+  "homepage": "https://github.com/parry-org/parry#readme"
+}
