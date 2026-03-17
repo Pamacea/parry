@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::PathBuf;
+use std::env;
 use crate::CliContext;
 
 /// Install command
@@ -25,7 +26,10 @@ impl InstallCommand {
     }
 
     pub fn run(&self, _ctx: &CliContext) -> Result<()> {
-        println!("🚀 Installing Parry...\n");
+        println!("🚀 Installing Parry v0.2.1...\n");
+
+        // Step 0: Pre-flight check - verify we're in the right directory
+        self.preflight_check()?;
 
         // Step 1: Create directories
         self.create_directories()?;
@@ -36,35 +40,56 @@ impl InstallCommand {
         // Step 3: Create Claude Code hook
         self.create_hook()?;
 
-        // Step 4: Register hook in settings.json
+        // Step 4: Clean up duplicate hooks
+        self.cleanup_duplicate_hooks()?;
+
+        // Step 5: Register hook in settings.json
         self.register_hook()?;
 
-        // Step 5: Install daemon service
-        if !self.no_daemon {
-            self.install_daemon()?;
-        }
+        // Step 6: Verify and report binary status
+        self.verify_binaries()?;
 
         println!("\n✅ Parry installed successfully!");
-        println!("\nNext steps:");
-        println!("  1. Restart Claude Code");
-        println!("  2. Start coding - Parry will validate automatically!");
-        println!("\nCommands:");
-        println!("  parry status      - Check daemon status");
-        println!("  parry check <file> - Manually validate a file");
-        println!("  parry config       - Manage configuration");
+        println!("\n📋 Next steps:");
+        println!("  1. Build the binaries:");
+        println!("     cargo build --release --workspace");
+        println!("     (OR: cargo install --path crates/oparry-cli)");
+        println!("     (OR: cargo install --path crates/oparry-daemon)");
+        println!("  2. Restart Claude Code");
+        println!("  3. Start coding - Parry will validate automatically!");
+        println!("\n📝 Commands:");
+        println!("  oparry check <file> - Manually validate a file");
+        println!("  oparryd status      - Check daemon status");
+        println!("  oparry config       - Manage configuration");
+
+        Ok(())
+    }
+
+    fn preflight_check(&self) -> Result<()> {
+        // Verify we're in the Parry project directory
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let project_root = manifest_dir.parent().and_then(|p| p.parent());
+
+        if let Some(root) = project_root {
+            let cargo_toml = root.join("Cargo.toml");
+            if !cargo_toml.exists() {
+                println!("  ⚠️  Warning: May not be in Parry project directory");
+            } else {
+                println!("  ✓ Project directory verified");
+            }
+        }
 
         Ok(())
     }
 
     fn create_directories(&self) -> Result<()> {
-        println!("📁 Creating directories...");
+        println!("\n📁 Creating directories...");
 
         let home = dirs::home_dir().context("Cannot find home directory")?;
 
         let dirs = [
             home.join(".config").join("parry"),
-            home.join(".parry").join("hooks"),
-            home.join(".claude").join("plugins"),
+            home.join(".claude").join("hooks"),  // Standard Claude Code hooks directory
         ];
 
         for dir in &dirs {
@@ -72,6 +97,8 @@ impl InstallCommand {
                 fs::create_dir_all(dir)
                     .with_context(|| format!("Failed to create directory: {:?}", dir))?;
                 println!("  ✓ Created: {}", dir.display());
+            } else {
+                println!("  ✓ Exists: {}", dir.display());
             }
         }
 
@@ -79,7 +106,7 @@ impl InstallCommand {
     }
 
     fn create_global_config(&self) -> Result<()> {
-        println!("📝 Creating global config...");
+        println!("\n📝 Creating global config...");
 
         let home = dirs::home_dir().context("Cannot find home directory")?;
         let config_dir = home.join(".config").join("parry");
@@ -150,7 +177,7 @@ python = [
     }
 
     fn create_hook(&self) -> Result<()> {
-        println!("🪝 Creating Claude Code hook...");
+        println!("\n🪝 Creating Claude Code hooks...");
 
         // Read hooks from integrations directory
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -162,11 +189,11 @@ python = [
         ];
 
         let home = dirs::home_dir().context("Cannot find home directory")?;
-        let hook_dir = home.join(".claude").join("plugins").join("parry");
+        let hook_dir = home.join(".claude").join("hooks");  // Standard hooks directory
 
-        // Create plugin directory
+        // Create hooks directory
         fs::create_dir_all(&hook_dir)
-            .context("Failed to create plugin directory")?;
+            .context("Failed to create hooks directory")?;
 
         for (hook_file_name, hook_type) in hooks {
             let hook_file = project_root.join("integrations").join(hook_file_name);
@@ -204,8 +231,91 @@ python = [
         Ok(())
     }
 
+    /// Clean up duplicate hooks that may have been registered
+    fn cleanup_duplicate_hooks(&self) -> Result<()> {
+        println!("\n🧹 Checking for duplicate hooks...");
+
+        let home = dirs::home_dir().context("Cannot find home directory")?;
+        let settings_path = home.join(".claude").join("settings.json");
+
+        if !settings_path.exists() {
+            return Ok(());
+        }
+
+        let content = fs::read_to_string(&settings_path)
+            .context("Failed to read settings.json")?;
+
+        let mut settings: serde_json::Value = serde_json::from_str(&content)
+            .context("Failed to parse settings.json")?;
+
+        let settings_obj = settings.as_object_mut().unwrap();
+
+        // Get hooks object if it exists
+        if let Some(hooks_value) = settings_obj.get_mut("hooks") {
+            if let Some(hooks) = hooks_value.as_object_mut() {
+                // Clean up PreToolUse duplicates
+                if let Some(pre_tool) = hooks.get_mut("PreToolUse") {
+                    if let Some(pre_tool_arr) = pre_tool.as_array_mut() {
+                        let unique_hooks: Vec<serde_json::Value> = pre_tool_arr
+                            .iter()
+                            .filter(|hook| {
+                                // Keep hooks that are NOT parry hooks (they'll be re-registered)
+                                if let Some(hook_arr) = hook.get("hooks").and_then(|h| h.as_array()) {
+                                    for h in hook_arr {
+                                        if let Some(cmd) = h.get("command").and_then(|c| c.as_str()) {
+                                            if cmd.contains("parry") {
+                                        return false; // Remove old parry hooks
+                                            }
+                                        }
+                                    }
+                                }
+                                true // Keep non-parry hooks
+                            })
+                            .cloned()
+                            .collect();
+
+                        *pre_tool_arr = unique_hooks;
+                    }
+                }
+
+                // Clean up SessionStart duplicates
+                if let Some(session_start) = hooks.get_mut("SessionStart") {
+                    if let Some(session_start_arr) = session_start.as_array_mut() {
+                        let unique_hooks: Vec<serde_json::Value> = session_start_arr
+                            .iter()
+                            .filter(|hook| {
+                                if let Some(hook_arr) = hook.get("hooks").and_then(|h| h.as_array()) {
+                                    for h in hook_arr {
+                                        if let Some(cmd) = h.get("command").and_then(|c| c.as_str()) {
+                                            if cmd.contains("parry") {
+                                                return false; // Remove old parry hooks
+                                            }
+                                        }
+                                    }
+                                }
+                                true
+                            })
+                            .cloned()
+                            .collect();
+
+                        *session_start_arr = unique_hooks;
+                    }
+                }
+
+                // Write back cleaned settings
+                let settings_json = serde_json::to_string_pretty(&settings)?;
+                fs::write(&settings_path, settings_json)
+                    .context("Failed to write settings.json")?;
+
+                println!("  ✓ Cleaned up duplicate hooks");
+            }
+        }
+
+        Ok(())
+    }
+
     fn register_hook(&self) -> Result<()> {
-        println!("🔗 Registering hooks in Claude Code...");
+        println!("\n🔗 Registering hooks in Claude Code...");
 
         let home = dirs::home_dir().context("Cannot find home directory")?;
         let settings_path = home.join(".claude").join("settings.json");
@@ -228,18 +338,19 @@ python = [
             .as_object_mut()
             .unwrap();
 
-        // Define hooks to register
-        let hook_path = if cfg!(windows) {
-            r#"node ~/.claude/plugins/parry/oparryd-hook.cjs"#
-        } else {
-            r#"node ~/.claude/plugins/parry/oparryd-hook.cjs"#
-        };
+        // Use standard .claude/hooks directory
+        let hook_dir = home.join(".claude").join("hooks");
 
-        let start_hook_path = if cfg!(windows) {
-            r#"node ~/.claude/plugins/parry/oparryd-start.cjs"#
-        } else {
-            r#"node ~/.claude/plugins/parry/oparryd-start.cjs"#
-        };
+        // Build hook commands with absolute paths (important for Windows)
+        let hook_path = format!(
+            r#"node "{}""#,
+            hook_dir.join("oparryd-hook.cjs").display()
+        );
+
+        let start_hook_path = format!(
+            r#"node "{}""#,
+            hook_dir.join("oparryd-start.cjs").display()
+        );
 
         // Register PreToolUse hook for validation
         let pre_tool_use = hooks.entry("PreToolUse")
@@ -247,16 +358,18 @@ python = [
             .as_array_mut()
             .unwrap();
 
-        let mut pre_tool_registered = false;
-        for hook in pre_tool_use.iter() {
-            if let Some(command) = hook.get("command") {
-                if command.as_str() == Some(hook_path) {
-                    pre_tool_registered = true;
-                    println!("  ℹ️  PreToolUse hook already registered");
-                    break;
-                }
+        let pre_tool_registered = pre_tool_use.iter().any(|hook| {
+            if let Some(hook_arr) = hook.get("hooks").and_then(|h| h.as_array()) {
+                hook_arr.iter().any(|h| {
+                    h.get("command")
+                        .and_then(|c| c.as_str())
+                        .map(|c| c.contains("oparryd-hook.cjs"))
+                        .unwrap_or(false)
+                })
+            } else {
+                false
             }
-        }
+        });
 
         if !pre_tool_registered {
             pre_tool_use.push(serde_json::json!({
@@ -268,6 +381,8 @@ python = [
                 }]
             }));
             println!("  ✓ Registered PreToolUse hook");
+        } else {
+            println!("  ℹ️  PreToolUse hook already registered");
         }
 
         // Register SessionStart hook for daemon auto-start
@@ -276,16 +391,18 @@ python = [
             .as_array_mut()
             .unwrap();
 
-        let mut session_start_registered = false;
-        for hook in session_start.iter() {
-            if let Some(command) = hook.get("command") {
-                if command.as_str() == Some(start_hook_path) {
-                    session_start_registered = true;
-                    println!("  ℹ️  SessionStart hook already registered");
-                    break;
-                }
+        let session_start_registered = session_start.iter().any(|hook| {
+            if let Some(hook_arr) = hook.get("hooks").and_then(|h| h.as_array()) {
+                hook_arr.iter().any(|h| {
+                    h.get("command")
+                        .and_then(|c| c.as_str())
+                        .map(|c| c.contains("oparryd-start.cjs"))
+                        .unwrap_or(false)
+                })
+            } else {
+                false
             }
-        }
+        });
 
         if !session_start_registered {
             session_start.push(serde_json::json!({
@@ -297,6 +414,8 @@ python = [
                 }]
             }));
             println!("  ✓ Registered SessionStart hook");
+        } else {
+            println!("  ℹ️  SessionStart hook already registered");
         }
 
         // Write back settings
@@ -308,30 +427,56 @@ python = [
         Ok(())
     }
 
-    fn install_daemon(&self) -> Result<()> {
-        println!("🔧 Setting up daemon...");
+    fn verify_binaries(&self) -> Result<()> {
+        println!("\n🔧 Verifying binaries...");
 
-        // Check if parryd exists
-        let parryd_path = if cfg!(windows) {
-            "parryd.exe"
+        let home = dirs::home_dir().context("Cannot find home directory")?;
+        let cargo_bin = home.join(".cargo").join("bin");
+
+        let oparry_bin = if cfg!(windows) {
+            cargo_bin.join("oparry.exe")
         } else {
-            "parryd"
+            cargo_bin.join("oparry")
         };
 
-        // Try to run parryd to verify it works
-        let test_result = std::process::Command::new(parryd_path)
-            .arg("--version")
-            .output();
+        let parryd_bin = if cfg!(windows) {
+            cargo_bin.join("oparryd.exe")
+        } else {
+            cargo_bin.join("oparryd")
+        };
 
-        if test_result.is_err() {
-            println!("  ⚠️  Daemon not found. Run: cargo build --release --workspace");
-            println!("  ℹ️  You can start the daemon manually later with: parryd run");
-            return Ok(());
+        let mut found_count = 0;
+
+        if oparry_bin.exists() {
+            println!("  ✓ oparry binary found");
+            found_count += 1;
+        } else {
+            println!("  ⚠️  oparry NOT found at: {}", oparry_bin.display());
         }
 
-        println!("  ✓ Daemon available");
-        println!("  ℹ️  Start the daemon with: parryd run");
-        println!("  ℹ️  Or install as a service: parryd install --service (TODO)");
+        if parryd_bin.exists() {
+            println!("  ✓ oparryd binary found");
+            found_count += 1;
+        } else {
+            println!("  ⚠️  oparryd NOT found at: {}", parryd_bin.display());
+        }
+
+        if found_count == 0 {
+            println!("\n  🔴 BINARIES NOT INSTALLED!");
+            println!("  Run the following command to build and install:");
+            println!("  ");
+            println!("  cargo build --release --workspace");
+            println!("  ");
+            println!("  Then copy the binaries:");
+            println!("  ");
+            println!("  # On Windows:");
+            println!("  copy target\\release\\oparry.exe %USERPROFILE%\\.cargo\\bin\\");
+            println!("  copy target\\release\\oparryd.exe %USERPROFILE%\\.cargo\\bin\\");
+            println!("  ");
+            println!("  # On Unix:");
+            println!("  cp target/release/oparry ~/.cargo/bin/");
+            println!("  cp target/release/oparryd ~/.cargo/bin/");
+        }
 
         Ok(())
     }

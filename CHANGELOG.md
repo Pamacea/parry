@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-03-17
+
+### Added
+- **Visible error messages** when Parry binaries are not found
+- **Binary verification step** in installation process
+- **Pre-flight check** to verify project directory
+- **Duplicate hook cleanup** during installation
+- **Absolute path support** for hooks on Windows
+- Changelog tracking
+
+### Fixed
+- **Hook directory architecture**: Hooks now install to standard `.claude/hooks/` instead of `.claude/plugins/parry/`
+- **Hook error visibility**: Hook now shows clear error message when `oparry` binary is missing instead of silently exiting with code 0
+- **Windows path resolution**: Installer now uses absolute paths instead of `~` for Windows compatibility
+- **Duplicate hooks**: Hooks in `settings.json` are now automatically cleaned up during installation
+- **Daemon detection on Windows**: Fixed `tasklist` command for proper process detection
+- **Daemon startup**: Uses `spawn` with `detached` option for proper background execution on all platforms
+
+### Changed
+- Version bump from 0.2.0 to 0.2.1
+- Hook files renamed from `parryd-*.cjs` to `oparryd-*.cjs` for consistency
+- **Hook location**: Hooks now use standard Claude Code hooks directory (`.claude/hooks/`)
+
+### Technical
+- Improved error handling in JavaScript hooks
+- Better cross-platform compatibility for daemon startup
+- Enhanced installation process with step-by-step verification
+
 ## [0.2.0] - 2026-03-17
 
 ### Added
