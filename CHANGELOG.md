@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-03-18
+
+### Fixed
+- **Missing PARRY.md**: `oparry install` now creates `~/.claude/PARRY.md` with CLI docs, validators, and config reference
+- **Missing CLAUDE.md reference**: `oparry install` now injects `@PARRY.md` into `~/.claude/CLAUDE.md` (idempotent, preserves existing content)
+
+### Changed
+- Version bump from 0.2.1 to 0.2.2
+- Installation process expanded from 6 to 8 steps
+
 ## [0.2.1] - 2025-03-17
 
 ### Added
