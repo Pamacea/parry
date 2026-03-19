@@ -26,7 +26,7 @@ impl InstallCommand {
     }
 
     pub fn run(&self, _ctx: &CliContext) -> Result<()> {
-        println!("🚀 Installing Parry v0.2.2...\n");
+        println!("🚀 Installing Parry v0.2.3...\n");
 
         // Step 0: Pre-flight check - verify we're in the right directory
         self.preflight_check()?;
@@ -45,6 +45,9 @@ impl InstallCommand {
 
         // Step 5: Register hook in settings.json
         self.register_hook()?;
+
+        // Step 5.5: Inject PARRY_CONFIG in settings.json env
+        self.inject_parry_config()?;
 
         // Step 6: Create PARRY.md in ~/.claude/
         self.create_parry_md()?;
@@ -430,6 +433,73 @@ python = [
             .context("Failed to write settings.json")?;
 
         println!("  ✓ Hooks registered in {}", settings_path.display());
+        Ok(())
+    }
+
+    /// Inject PARRY_CONFIG environment variable into settings.json
+    /// This ensures hooks can find the Parry config file cross-platform
+    fn inject_parry_config(&self) -> Result<()> {
+        println!("\n🔧 Injecting PARRY_CONFIG environment variable...");
+
+        let home = dirs::home_dir().context("Cannot find home directory")?;
+        let settings_path = home.join(".claude").join("settings.json");
+
+        if !settings_path.exists() {
+            println!("  ⚠️  settings.json not found, skipping");
+            return Ok(());
+        }
+
+        let content = fs::read_to_string(&settings_path)
+            .context("Failed to read settings.json")?;
+
+        let mut settings: serde_json::Value = serde_json::from_str(&content)
+            .context("Failed to parse settings.json")?;
+
+        let settings_obj = settings.as_object_mut().unwrap();
+
+        // Get or create env object
+        let env = settings_obj.entry("env")
+            .or_insert_with(|| serde_json::json!({}))
+            .as_object_mut()
+            .unwrap();
+
+        // Cross-platform config path detection
+        // Use PathBuf for proper cross-platform path handling
+        let config_path = home.join(".config").join("parry").join("config.toml");
+
+        // Convert to string, using backslashes on Windows for JSON compatibility
+        let config_path_str = if cfg!(windows) {
+            // On Windows, ensure backslashes are properly escaped for JSON
+            config_path.display().to_string().replace('\\', "\\\\")
+        } else {
+            config_path.display().to_string()
+        };
+
+        // Check if PARRY_CONFIG already exists
+        if env.contains_key("PARRY_CONFIG") {
+            let existing = env["PARRY_CONFIG"].as_str().unwrap_or("");
+            // Normalize for comparison (replace double backslashes with single)
+            let normalized_existing = existing.replace("\\\\", "\\");
+            let normalized_new = config_path.display().to_string();
+
+            if normalized_existing == normalized_new || normalized_existing.contains("parry") {
+                println!("  ℹ️  PARRY_CONFIG already set to: {}", existing);
+                return Ok(());
+            }
+        }
+
+        // Inject PARRY_CONFIG
+        env.insert(
+            "PARRY_CONFIG".to_string(),
+            serde_json::json!(config_path_str)
+        );
+
+        // Write back settings
+        let settings_json = serde_json::to_string_pretty(&settings)?;
+        fs::write(&settings_path, settings_json)
+            .context("Failed to write settings.json")?;
+
+        println!("  ✓ PARRY_CONFIG injected: {}", config_path.display());
         Ok(())
     }
 
