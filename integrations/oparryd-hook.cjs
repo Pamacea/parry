@@ -19,15 +19,28 @@ const path = require('path');
 const os = require('os');
 
 // Configuration
-const PARRY_CONFIG = process.env.PARRY_CONFIG || path.join(os.homedir(), '.config', 'oparry', 'config.toml');
+const PARRY_CONFIG = process.env.PARRY_CONFIG || path.join(os.homedir(), '.config', 'parry', 'config.toml');
 const STRICT_MODE = process.env.PARRY_STRICT === 'true';
 const AUTO_FIX = process.env.PARRY_AUTO_FIX !== 'false';
 
 // Error tracking
 let binaryNotFoundShown = false;
 
+// Log file for debugging
+const LOG_FILE = process.env.PARRY_LOG || path.join(os.homedir(), '.parry', 'hook.log');
+
+function log(message) {
+    const timestamp = new Date().toISOString();
+    const logLine = `[${timestamp}] ${message}\n`;
+    try {
+        fs.appendFileSync(LOG_FILE, logLine);
+    } catch (e) {
+        // Ignore logging errors
+    }
+}
+
 /**
- * Find the oparry binary in common locations
+ * Find the parry binary in common locations
  * Returns null if not found (instead of falling back to a guess)
  */
 function findParryBin() {
@@ -45,7 +58,6 @@ function findParryBin() {
 
     // Common cargo installation paths
     const cargoBin = path.join(os.homedir(), '.cargo', 'bin', binName);
-    debug(`  Checking cargo bin: ${cargoBin} - ${fs.existsSync(cargoBin) ? 'FOUND' : 'not found'}`);
     if (fs.existsSync(cargoBin)) {
         return cargoBin;
     }
@@ -53,12 +65,11 @@ function findParryBin() {
     // Try to find via cargo which command
     try {
         const cargoPath = execSync('cargo which parry', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-        debug(`  cargo which returned: ${cargoPath}`);
         if (cargoPath && fs.existsSync(cargoPath)) {
             return cargoPath;
         }
     } catch (e) {
-        debug(`  cargo which failed: ${e.message}`);
+        // Cargo not available or oparry not installed
     }
 
     // Binary not found - return null to signal error
@@ -103,28 +114,11 @@ function showBinaryNotFound() {
 // Find binary at startup
 const PARRY_BIN = findParryBin();
 
-// Debug: log search results
-debug('Binary search results:');
-debug(`  PARRY_BIN env: ${process.env.PARRY_BIN || 'not set'}`);
-debug(`  Platform: ${os.platform()}`);
-debug(`  Found binary: ${PARRY_BIN || 'NOT FOUND'}`);
+log(`Parry hook started - Binary: ${PARRY_BIN || 'NOT FOUND'}`);
 
 // Show error immediately if binary not found
 if (!PARRY_BIN) {
     showBinaryNotFound();
-}
-
-// Logger
-function log(level, message) {
-    const timestamp = new Date().toISOString();
-    const method = level === 'stderr' ? 'error' : level;
-    console[method](`[${timestamp}] [parry-hook] ${message}`);
-}
-
-function debug(message) {
-    if (process.env.PARRY_DEBUG) {
-        log('error', `[DEBUG] ${message}`);
-    }
 }
 
 /**
@@ -180,7 +174,7 @@ function validateFile(filePath, content) {
             fs.unlinkSync(tmpPath);
         }
         // Parry error - return failure
-        debug(`Parry validation error: ${error.message}`);
+        log(`Parry validation error: ${error.message}`);
         return { success: false, error: error.message, validation: null };
     }
 }
@@ -261,7 +255,7 @@ function main() {
     try {
         inputData = fs.readFileSync(0, 'utf-8');
     } catch (e) {
-        debug(`Failed to read stdin: ${e.message}`);
+        log(`Failed to read stdin: ${e.message}`);
         process.exit(0); // Allow on JSON read error
     }
 
@@ -270,12 +264,14 @@ function main() {
         process.exit(0);
     }
 
+    log(`Received input: ${inputData.substring(0, 200)}`);
+
     let input;
     try {
         input = JSON.parse(inputData);
     } catch (e) {
-        debug(`Failed to parse JSON: ${e.message}`);
-        debug(`Input was: ${inputData.substring(0, 200)}`);
+        log(`Failed to parse JSON: ${e.message}`);
+        log(`Input was: ${inputData.substring(0, 200)}`);
         process.exit(0); // Allow on JSON parse error
     }
 
@@ -288,6 +284,8 @@ function main() {
     const operation = toolInput.operation;
     const filePath = toolInput.file_path;
     const content = toolInput.content;
+
+    log(`Processing text_editor: ${operation} on ${filePath}`);
 
     // Only validate write operations
     if (operation !== 'write' && operation !== 'create') {
@@ -307,7 +305,7 @@ function main() {
         process.exit(0); // Allow write when Parry is not available
     }
 
-    debug(`Validating: ${filePath}`);
+    log(`Validating: ${filePath}`);
 
     // Validate the file
     const { success, validation, error } = validateFile(filePath, content);
@@ -316,7 +314,7 @@ function main() {
         // Validation error - check if it's a fatal error or just validation issues
         if (!validation) {
             // Parry executable failed - log but allow
-            debug(`Validation error: ${error}`);
+            log(`Validation error: ${error}`);
             console.error(`[parry-hook] ⚠️  Validation skipped: ${error}`);
             process.exit(0); // Allow on validation errors
         }
@@ -328,7 +326,7 @@ function main() {
 
     // Check if validation passed
     if (validation.passed) {
-        debug('✓ Validation passed');
+        log('✓ Validation passed');
         process.exit(0);
     }
 
@@ -348,7 +346,7 @@ function main() {
 
     if (AUTO_FIX && !shouldBlock) {
         // Try to auto-fix
-        debug('Attempting auto-fix...');
+        log('Attempting auto-fix...');
         const { success: fixSuccess, fixedContent } = attemptFix(filePath, content);
 
         if (fixSuccess && fixedContent && fixedContent !== content) {
@@ -364,10 +362,10 @@ function main() {
     }
 
     if (shouldBlock) {
-        debug('Blocking write due to errors');
+        log('Blocking write due to errors');
         process.exit(2); // Block the write
     } else {
-        debug('Warning only, allowing write');
+        log('Warning only, allowing write');
         process.exit(1); // Show warnings but allow
     }
 }
