@@ -41,22 +41,24 @@ function findParryBin() {
     }
 
     const isWindows = os.platform() === 'win32';
-    const binName = isWindows ? 'oparry.exe' : 'oparry';
+    const binName = isWindows ? 'parry.exe' : 'parry';
 
     // Common cargo installation paths
     const cargoBin = path.join(os.homedir(), '.cargo', 'bin', binName);
+    debug(`  Checking cargo bin: ${cargoBin} - ${fs.existsSync(cargoBin) ? 'FOUND' : 'not found'}`);
     if (fs.existsSync(cargoBin)) {
         return cargoBin;
     }
 
     // Try to find via cargo which command
     try {
-        const cargoPath = execSync('cargo which oparry', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        const cargoPath = execSync('cargo which parry', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        debug(`  cargo which returned: ${cargoPath}`);
         if (cargoPath && fs.existsSync(cargoPath)) {
             return cargoPath;
         }
     } catch (e) {
-        // Cargo not available or oparry not installed
+        debug(`  cargo which failed: ${e.message}`);
     }
 
     // Binary not found - return null to signal error
@@ -71,7 +73,7 @@ function showBinaryNotFound() {
     binaryNotFoundShown = true;
 
     const isWindows = os.platform() === 'win32';
-    const binName = isWindows ? 'oparry.exe' : 'oparry';
+    const binName = isWindows ? 'parry.exe' : 'parry';
 
     console.error('\n╔═══════════════════════════════════════════════════════════════════╗');
     console.error('║  🔴 PARRY - BINARY NOT FOUND                                  ║');
@@ -101,8 +103,14 @@ function showBinaryNotFound() {
 // Find binary at startup
 const PARRY_BIN = findParryBin();
 
+// Debug: log search results
+debug('Binary search results:');
+debug(`  PARRY_BIN env: ${process.env.PARRY_BIN || 'not set'}`);
+debug(`  Platform: ${os.platform()}`);
+debug(`  Found binary: ${PARRY_BIN || 'NOT FOUND'}`);
+
 // Show error immediately if binary not found
-if (!PARRY_BIN && !process.env.PARRY_SILENT) {
+if (!PARRY_BIN) {
     showBinaryNotFound();
 }
 
@@ -137,7 +145,7 @@ function validateFile(filePath, content) {
     fs.writeFileSync(tmpPath, content, 'utf8');
 
     try {
-        // Run oparry check using spawnSync for better Windows compatibility
+        // Run parry check using spawnSync for better Windows compatibility
         const result = spawnSync(
             PARRY_BIN,
             ['check', '--output', 'json', tmpPath],
@@ -195,7 +203,7 @@ function attemptFix(filePath, content) {
     fs.writeFileSync(tmpPath, content, 'utf8');
 
     try {
-        // Run oparry check with fix using spawnSync
+        // Run parry check with fix using spawnSync
         const result = spawnSync(
             PARRY_BIN,
             ['check', '--fix', '--output', 'json', tmpPath],

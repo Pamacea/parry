@@ -49,6 +49,9 @@ impl InstallCommand {
         // Step 5.5: Inject PARRY_CONFIG in settings.json env
         self.inject_parry_config()?;
 
+        // Step 5.6: Inject PARRY_BIN in settings.json env
+        self.inject_parry_bin()?;
+
         // Step 6: Create PARRY.md in ~/.claude/
         self.create_parry_md()?;
 
@@ -503,6 +506,98 @@ python = [
         Ok(())
     }
 
+    /// Inject PARRY_BIN environment variable into settings.json
+    /// This ensures hooks can find the Parry executable cross-platform
+    fn inject_parry_bin(&self) -> Result<()> {
+        println!("\n🔧 Injecting PARRY_BIN environment variable...");
+
+        let home = dirs::home_dir().context("Cannot find home directory")?;
+        let settings_path = home.join(".claude").join("settings.json");
+
+        if !settings_path.exists() {
+            println!("  ⚠️  settings.json not found, skipping");
+            return Ok(());
+        }
+
+        let content = fs::read_to_string(&settings_path)
+            .context("Failed to read settings.json")?;
+
+        let mut settings: serde_json::Value = serde_json::from_str(&content)
+            .context("Failed to parse settings.json")?;
+
+        let settings_obj = settings.as_object_mut().unwrap();
+
+        // Get or create env object
+        let env = settings_obj.entry("env")
+            .or_insert_with(|| serde_json::json!({}))
+            .as_object_mut()
+            .unwrap();
+
+        // Find the parry binary in cargo bin directory
+        let is_windows = cfg!(windows);
+        let bin_name = if is_windows { "parry.exe" } else { "parry" };
+        let cargo_bin = home.join(".cargo").join("bin").join(bin_name);
+
+        let bin_path = if cargo_bin.exists() {
+            cargo_bin
+        } else {
+            // Try to find via cargo which
+            use std::process::Command;
+            let output = Command::new("cargo")
+                .args(["which", "parry"])
+                .output();
+
+            if let Ok(output) = output {
+                if output.status.success() {
+                    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !path.is_empty() {
+                        PathBuf::from(path)
+                    } else {
+                        cargo_bin // fallback to expected location
+                    }
+                } else {
+                    cargo_bin // fallback to expected location
+                }
+            } else {
+                cargo_bin // fallback to expected location
+            }
+        };
+
+        // Convert to string, using backslashes on Windows for JSON compatibility
+        let bin_path_str = if cfg!(windows) {
+            bin_path.display().to_string().replace('\\', "\\\\")
+        } else {
+            bin_path.display().to_string()
+        };
+
+        // Check if PARRY_BIN already exists
+        if env.contains_key("PARRY_BIN") {
+            let existing = env["PARRY_BIN"].as_str().unwrap_or("");
+            // Normalize for comparison (replace double backslashes with single)
+            let normalized_existing = existing.replace("\\\\", "\\");
+            let normalized_new = bin_path.display().to_string();
+
+            if normalized_existing == normalized_new || normalized_existing.contains("oparry") {
+                println!("  ℹ️  PARRY_BIN already set to: {}", existing);
+                return Ok(());
+            }
+        }
+
+        // Inject PARRY_BIN
+        env.insert(
+            "PARRY_BIN".to_string(),
+            serde_json::json!(bin_path_str)
+        );
+
+        // Write back settings
+        let settings_json = serde_json::to_string_pretty(&settings)?;
+        fs::write(&settings_path, settings_json)
+            .context("Failed to write settings.json")?;
+
+        println!("  ✓ PARRY_BIN injected: {}", bin_path.display());
+        Ok(())
+    }
+
     fn create_parry_md(&self) -> Result<()> {
         println!("\n📄 Creating PARRY.md...");
 
@@ -516,7 +611,7 @@ python = [
 
         let parry_md = r#"# PARRY - The Agentic Linter
 
-**Version:** 0.2.2 | **CLI:** `oparry`
+**Version:** 0.2.4 | **CLI:** `parry`
 
 ## Hook-Based Usage
 
@@ -527,12 +622,12 @@ Parry hooks run automatically with Claude Code:
 ## Commands
 
 ```bash
-oparry check <file>     # Validate a file
-oparry check .          # Validate entire project
-oparry watch            # Watch and validate on changes
-oparry init [--stack]   # Initialize project config
-oparryd status          # Check daemon status
-oparryd run             # Start daemon manually
+parry check <file>     # Validate a file
+parry check .          # Validate entire project
+parry watch            # Watch and validate on changes
+parry init [--stack]   # Initialize project config
+parryd status          # Check daemon status
+parryd run             # Start daemon manually
 ```
 
 ## Validators
@@ -563,7 +658,7 @@ PARRY_DEBUG=1         # Debug output
 
 ---
 
-*Auto-generated by oparry install*
+*Auto-generated by parry install*
 "#;
 
         fs::write(&parry_md_path, parry_md)

@@ -3,7 +3,7 @@
  * Parry Daemon Starter Hook
  *
  * This hook runs when Claude Code starts and automatically starts
- * the oparryd daemon if it's not already running.
+ * the parryd daemon if it's not already running.
  *
  * The daemon handles multi-session and multi-project validation.
  */
@@ -13,10 +13,10 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-// Find oparryd binary
+// Find parryd binary
 function findParrydBin() {
     const isWindows = os.platform() === 'win32';
-    const binName = isWindows ? 'oparryd.exe' : 'oparryd';
+    const binName = isWindows ? 'parryd.exe' : 'parryd';
 
     // Check cargo bin path
     const cargoBin = path.join(os.homedir(), '.cargo', 'bin', binName);
@@ -26,7 +26,7 @@ function findParrydBin() {
 
     // Try cargo which
     try {
-        const cargoPath = execSync('cargo which oparryd', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        const cargoPath = execSync('cargo which parryd', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
         if (cargoPath && fs.existsSync(cargoPath)) {
             return cargoPath;
         }
@@ -37,7 +37,7 @@ function findParrydBin() {
     return null; // Return null if not found
 }
 
-// Check if oparryd is already running
+// Check if parryd is already running
 function isDaemonRunning() {
     try {
         const isWindows = os.platform() === 'win32';
@@ -45,18 +45,18 @@ function isDaemonRunning() {
         if (isWindows) {
             // Use wmic or tasklist for Windows
             try {
-                const result = execSync('tasklist /FI "IMAGENAME eq oparryd.exe"', {
+                const result = execSync('tasklist /FI "IMAGENAME eq parryd.exe"', {
                     encoding: 'utf8',
                     stdio: ['ignore', 'pipe', 'ignore']
                 });
-                return result.includes('oparryd.exe');
+                return result.includes('parryd.exe');
             } catch (e) {
                 return false;
             }
         } else {
             // Use pgrep on Unix
             try {
-                execSync('pgrep -x oparryd', { stdio: ['ignore', 'pipe', 'ignore'] });
+                execSync('pgrep -x parryd', { stdio: ['ignore', 'pipe', 'ignore'] });
                 return true;
             } catch (e) {
                 return false;
