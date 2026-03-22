@@ -4,65 +4,82 @@
 
 **Problem:** AI-generated code often violates design systems, uses invalid Tailwind classes, or breaks project conventions.
 
-**Solution:** Parry is a Rust-based CLI that intercepts, validates, and enforces code quality rules before code hits your filesystem.
+**Solution:** Parry is a Rust-based CLI that validates and enforces code quality rules.
 
 ## 🎯 What It Does
 
 - **Tailwind Validator** — Ensures every class exists in your design system
-- **Import Structure Checker** — Enforces alias rules and component imports (shadcn/ui, etc.)
-- **Multi-Stack Support** — Rust/Axum, Next.js, NestJS, ViteJS with strict language-specific rules
+- **Import Structure Checker** — Enforces alias rules and component imports
+- **Multi-Stack Support** — Rust, Next.js, Vite with language-specific rules
 - **Watch Mode** — Real-time validation as you code
-- **Wrapper Mode** — Intercepts Claude Code writes before they reach disk
-- **Smart Outputs** — JSON for automation, SARIF for CI/CD integration
+- **Auto-Fix** — Automatically corrects common issues
+- **Claude Code Hook** — Post-write validation and auto-correction
 
 ## ⚡ Quick Start
 
 ```bash
-# Install (one-command setup)
-cargo install oparry-cli oparry-daemon
-parry install
+# Install from source
+cd parry
+cargo install --path crates/parry
 
-# Restart Claude Code - Oparry will validate automatically!
+# Initialize in your project
+parry init
+
+# Run validation
+parry check
 ```
-
-That's it! Parry is now integrated with Claude Code:
-- ✅ Files are validated **before** they're written
-- ✅ Daemon auto-starts with Claude Code
-- ✅ Multi-session, multi-project support
-- ✅ Works with all your projects immediately
 
 ## 📖 Commands
 
 | Command | Description |
 |----------|-------------|
-| `oparry install` | One-command setup for Claude Code integration |
-| `oparry check <file>` | Manually validate a file |
-| `oparry check .` | Validate entire project |
-| `oparry watch` | Watch files and validate on changes |
-| `oparryd status` | Check daemon status |
-| `oparryd run` | Start daemon manually |
+| `parry check [paths]` | Validate codebase |
+| `parry watch [paths]` | Watch files and validate on changes |
+| `parry run <cmd> [args]` | Run command with file validation |
+| `parry init` | Initialize configuration |
+| `parry config <subcmd>` | Manage configuration |
 
-## 📖 Use Cases
+## 🔌 Claude Code Integration
 
-| Scenario | Command |
-|----------|---------|
-| Validate Tailwind classes | `parry check --validators tailwind` |
-| Enforce shadcn/ui imports | `parry check --validators imports` |
-| Real-time development | `parry watch` |
-| Claude Code integration | `parry wrap` |
-| CI/CD pipeline | `parry check --output sarif` |
+### Single Hook Setup
 
-## 🏗️ Architecture
+```bash
+# Copy the hook
+cp integrations/parry-post-write.cjs ~/.claude/hooks/
+
+# Add to ~/.claude/settings.json
+{
+  "hooks": {
+    "PostToolUse": [{
+      "hooks": [{
+        "command": "node ~/.claude/hooks/parry-post-write.cjs",
+        "timeout": 10000
+      }],
+      "matcher": "Write|Edit"
+    }]
+  }
+}
+```
+
+See [integrations/README.md](integrations/README.md) for details.
+
+## 🏗️ Architecture (v0.3.0)
 
 ```
 parry/
-├── core/         # Validation engine & abstractions
-├── parser/       # Multi-language parsers (Oxc, Syn)
-├── validators/   # Specialized validators
-├── watcher/      # File system watcher
-├── wrapper/      # Stdio interceptor
-└── cli/          # Command-line interface
+├── crates/
+│   ├── parry-core/       # Core library (all modules)
+│   │   ├── parser/        # Language parsing
+│   │   ├── validators/    # All validators
+│   │   ├── watcher/       # File watching
+│   │   ├── wrapper/       # Sync wrapper mode
+│   │   └── autofix/       # Auto-fix engine
+│   └── parry/            # CLI binary
+└── integrations/
+    └── parry-post-write.cjs  # Claude Code hook
 ```
+
+**Simplified from 7 crates to 2!**
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
@@ -71,13 +88,11 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) — Technical architecture
 - [GUIDE.md](docs/GUIDE.md) — User guide
 - [REFERENCE.md](docs/REFERENCE.md) — Command reference
-- [ROADMAP.md](docs/ROADMAP.md) — Roadmap
+- [integrations/README.md](integrations/README.md) — Claude Code integration
 
 ## 🚀 Version
 
-**Current:** v0.2.0 (Alpha)
-
-See [ROADMAP.md](docs/ROADMAP.md) for what's next.
+**Current:** v0.3.0
 
 ## 📄 License
 

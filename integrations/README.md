@@ -1,188 +1,106 @@
 # Parry - Claude Code Integration
 
-> **Deep integration with Claude Code for real-time validation**
+> **Post-write validation and auto-correction for AI-generated code**
 
-This directory contains the hooks and bridges for integrating Parry with Claude Code's file operations.
-
-## Overview
-
-Parry intercepts Claude Code's file write operations through a bidirectional IPC protocol, validating code before it hits the filesystem. This ensures that AI-generated code always follows your project's conventions and design system.
+This directory contains a single hook for integrating Parry with Claude Code's file operations.
 
 ## Architecture
 
 ```
-┌─────────────────┐     IPC Protocol      ┌─────────────────┐
-│   Claude Code   │ ←─────────────────→  │    Parry        │
-│  (writes files) │   stdin/stdout JSON   │  (validates)    │
-└─────────────────┘                       └─────────────────┘
-         ↓                                          ↓
-    ┌─────────┐                              ┌──────────┐
-    │ Hook.js │                              │ Daemon   │
-    │ Hook.py │                              │ Bridge   │
-    └─────────┘                              └──────────┘
+┌─────────────────┐     Write/Edit Tool     ┌─────────────────┐
+│   Claude Code   │ ───────────────────→   │  File System   │
+│  (writes files) │                         │  (committed)    │
+└─────────────────┘                         └─────────────────┘
+         ↓                                            ↓
+    ┌──────────────────────────────────────────────────────┐
+    │           PostToolUse Hook (parry-post-write.cjs)  │
+    │  - Validates AFTER write                            │
+    │  - Auto-corrects fixable issues                     │
+    │  - Logs non-fixable issues                          │
+    └──────────────────────────────────────────────────────┘
+                           ↓
+                    ┌─────────────┐
+                    │    Parry    │
+                    │   (check)   │
+                    └─────────────┘
 ```
 
-## Files
+## Important: PostToolUse Hook
 
-| File | Language | Purpose |
-|------|----------|---------|
-| `claude-hook.js` | Node.js | Hook for Claude Code (Node.js runtime) |
-| `claude-hook.py` | Python | Hook for Claude Code (Python runtime) |
-| `README.md` | Markdown | This documentation |
+**Claude Code does NOT call PreToolUse for Write/Edit operations.**
+
+- ❌ **PreToolUse**: NOT called for Write/Edit → Cannot prevent writes
+- ✅ **PostToolUse**: Called after Write/Edit → Can validate and auto-fix
+
+This means:
+- Files ARE written to disk first
+- Parry validates afterward
+- Fixable issues are auto-corrected
+- Non-fixable issues are logged
 
 ## Installation
 
 ### Quick Install
 
 ```bash
-# Install Parry (if not already installed)
-cargo install parry-cli
+# Copy the hook
+cp integrations/parry-post-write.cjs ~/.claude/hooks/
 
-# Install the Claude Code hook
-parry hook install
+# Add to ~/.claude/settings.json (see below)
 ```
 
 ### Manual Installation
 
-#### Using Node.js Hook
-
-```bash
-# Copy hook to Parry directory
-cp integrations/claude-hook.js ~/.parry/hooks/
-
-# Make executable (Unix only)
-chmod +x ~/.parry/hooks/claude-hook.js
-
-# Add to Claude Code config (~/.claude/config.json)
-# See configuration section below
-```
-
-#### Using Python Hook
-
-```bash
-# Copy hook to Parry directory
-cp integrations/claude-hook.py ~/.parry/hooks/
-
-# Make executable (Unix only)
-chmod +x ~/.parry/hooks/claude-hook.py
-
-# Add to Claude Code config (~/.claude/config.json)
-# See configuration section below
-```
-
-## Configuration
-
-### Claude Code Config
-
-Add the hook to your `~/.claude/config.json`:
+1. **Add to `~/.claude/settings.json`:**
 
 ```json
 {
-  "preWriteHooks": [
-    {
-      "command": "node ~/.parry/hooks/claude-hook.js",
-      "enabled": true
-    }
-  ]
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [{
+          "command": "node ~/.claude/hooks/parry-post-write.cjs",
+          "timeout": 10000,
+          "type": "command"
+        }],
+        "matcher": "Write|Edit"
+      }
+    ]
+  },
+  "env": {
+    "PARRY_BIN": "parry",
+    "PARRY_AUTO_FIX": "true",
+    "PARRY_DEBUG": "false"
+  }
 }
 ```
 
-Or for Python:
+### Paths
 
-```json
-{
-  "preWriteHooks": [
-    {
-      "command": "python3 ~/.parry/hooks/claude-hook.py",
-      "enabled": true
-    }
-  ]
-}
-```
+**Windows:**
+- **Hooks**: `C:\Users\<user>\.claude\hooks\`
+- **Config**: `C:\Users\<user>\.claude\settings.json`
 
-### Environment Variables
+**Unix/Linux/Mac:**
+- **Hooks**: `~/.claude/hooks/`
+- **Config**: `~/.claude/settings.json`
+
+## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PARRY_EXE` | `parry` | Path to Parry executable |
-| `PARRY_MODE` | `warn` | Operation mode: `strict`, `warn`, `disabled` |
-| `PARRY_DEBUG` | `false` | Enable debug logging |
-| `PARRY_LOG` | `~/.parry/hook.log` | Log file path |
-| `PARRY_STRICT` | `false` | Block writes on validation errors |
+| `PARRY_BIN` | `parry` | Path to parry executable |
+| `PARRY_CONFIG` | - | Config file path (optional) |
+| `PARRY_AUTO_FIX` | `true` | Auto-fix fixable issues |
+| `PARRY_DEBUG` | `false` | Debug logging |
 
-### Modes
+## How It Works
 
-- **strict**: Block all writes that fail validation
-- **warn** (default): Show warnings but allow writes
-- **disabled**: Pass through without validation
-
-## Protocol
-
-### Request Format
-
-```json
-{
-  "type": "write_file",
-  "id": "req-1234567890",
-  "path": "src/components/Button.tsx",
-  "content": "export const Button = () => {...}",
-  "encoding": "utf-8",
-  "create_dirs": true
-}
-```
-
-### Response Format
-
-```json
-{
-  "type": "approved",
-  "request_id": "req-1234567890",
-  "modified_content": null
-}
-```
-
-Or for rejected:
-
-```json
-{
-  "type": "rejected",
-  "request_id": "req-1234567890",
-  "message": "Validation failed",
-  "issues": [
-    {
-      "code": "tailwind-invalid-class",
-      "level": "error",
-      "message": "Invalid Tailwind class: w-xl",
-      "line": 10,
-      "column": 15,
-      "suggestion": "Use max-w-xl instead",
-      "context": "className=\"w-xl\""
-    }
-  ],
-  "can_autofix": true
-}
-```
-
-## Usage Examples
-
-### Testing the Hook
-
-```bash
-# Test with a ping
-echo '{"type":"ping"}' | node integrations/claude-hook.js
-
-# Test with a write request
-echo '{"type":"write_file","path":"test.ts","content":"export const x = 1;"}' | node integrations/claude-hook.js
-```
-
-### Running as a Daemon
-
-```bash
-# Start the Parry daemon with IPC
-parry daemon --ipc
-
-# The hook will automatically connect to the daemon
-```
+1. **File Written**: Claude Code writes a file to disk
+2. **Hook Triggered**: `parry-post-write.cjs` is called
+3. **Validation**: Parry checks the file for issues
+4. **Auto-Fix**: Fixable issues are automatically corrected
+5. **Report**: Non-fixable issues are logged to console
 
 ## Validation Rules
 
@@ -193,56 +111,41 @@ Parry validates:
 3. **React Patterns**: Function components, hooks limits
 4. **CSS**: No !important, line length limits
 5. **Rust**: Error handling, no unwraps
+6. **TypeScript**: Type safety, proper typing
 
-See the main documentation for configuring these rules.
+See main documentation for configuration.
 
 ## Troubleshooting
 
 ### Hook not executing
 
-1. Check Claude Code config: `cat ~/.claude/config.json`
-2. Verify hook is executable: `ls -l ~/.parry/hooks/`
-3. Check logs: `tail -f ~/.parry/logs/hook-errors.log`
+Check that:
+1. Hook is in `~/.claude/hooks/` directory
+2. Hook is referenced in `~/.claude/settings.json`
+3. Node.js is installed and in PATH
 
 ### Parry not found
 
-Set the `PARRY_EXE` environment variable:
+Set `PARRY_BIN` env var in settings.json or ensure parry is in PATH:
 
-```bash
-export PARRY_EXE=/path/to/parry
+```json
+{
+  "env": {
+    "PARRY_BIN": "C:/Users/YourUser/.cargo/bin/parry.exe"
+  }
+}
 ```
 
-### Timeout errors
+### Enable debug logging
 
-Increase timeout in `~/.parry/daemon.toml`:
-
-```toml
-[bridge]
-validation_timeout = 60  # seconds
+```json
+{
+  "env": {
+    "PARRY_DEBUG": "true"
+  }
+}
 ```
-
-## Development
-
-### Running Tests
-
-```bash
-# Python tests
-pytest integrations/
-
-# Node.js tests
-npm test -- integrations/
-```
-
-### Protocol Version
-
-Current protocol version: `0.2.0`
-
-Protocol changes are backwards compatible within major versions.
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions welcome! Please read the main CONTRIBUTING.md file.

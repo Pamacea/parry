@@ -1,133 +1,98 @@
-# Parry Architecture
+# Parry Architecture v0.3.0
 
-> Technical deep-dive into Parry's design, components, and data flow.
+> Technical deep-dive into Parry's simplified design, components, and data flow.
 
-## 🏗️ Overview
+## 🏗️ Overview (v0.3.0 - Simplified)
 
-Parry is a modular Rust CLI organized as a Cargo workspace with specialized crates:
+Parry v0.3.0 is a **radically simplified** Rust CLI organized as a 2-crate workspace:
 
 ```
 parry/
-├── Cargo.toml                    # Workspace root
+├── Cargo.toml                    # Workspace root (2 crates only)
 ├── crates/
-│   ├── core/                     # Validation engine
-│   ├── parser/                   # Multi-language parsers
-│   ├── validators/               # Specialized validators
-│   ├── watcher/                  # File system watcher
-│   ├── wrapper/                  # Stdio interceptor
-│   └── cli/                      # CLI interface
-├── configs/                      # Default rule configurations
-└── docs/                         # Documentation
+│   ├── parry-core/               # Core library (oalacea-parry-core)
+│   │   ├── src/
+│   │   │   ├── lib.rs           # Module exports
+│   │   │   ├── config.rs
+│   │   │   ├── error.rs
+│   │   │   ├── report.rs
+│   │   │   ├── rule.rs
+│   │   │   ├── parser/          # Module (not a crate)
+│   │   │   ├── validators/      # Module (not a crate)
+│   │   │   ├── watcher/         # Module (not a crate)
+│   │   │   ├── wrapper/         # Module (not a crate)
+│   │   │   └── autofix/         # Module (not a crate)
+│   └── parry/                   # CLI binary (oalacea-parry)
+│       └── src/
+│           ├── main.rs
+│           └── commands/
+├── integrations/
+│   ├── parry-post-write.cjs     # Single Claude Code hook
+│   └── README.md
+└── docs/                        # Documentation
 ```
+
+## 🔄 What Changed in v0.3.0
+
+### Removed
+- ❌ `parry-daemon/` — No more background daemon
+- ❌ 7-crates architecture → 2-crates
+- ❌ IPC/sockets/gRPC communication
+- ❌ Commands: `parryd status`, `parryd run`, `hook`, `install`
+
+### Simplified
+- ✅ **Monolithic core library** — All modules in one crate
+- ✅ **Direct CLI** — No daemon dependency
+- ✅ **Single hook** — `parry-post-write.cjs` for Claude Code
+- ✅ **Synchronous wrapper** — Simple `parry run <cmd>` mode
 
 ---
 
-## 📦 Crates
+## 📦 Crate Structure
 
-### 1. `core` — The Heart
+### 1. `parry-core` — The Monolithic Library
 
-**Purpose:** Shared types, error handling, reporting, and rule engine.
+**Package Name:** `oalacea-parry-core`
+**Import Path:** `use oalacea_parry_core::`
+
+**Purpose:** All validation logic in one crate using Rust modules.
 
 ```rust
-// Core abstractions
-pub trait Validator {
-    fn validate(&self, input: &Input) -> Result<Report, Vec<Error>>;
-}
+// Re-exports
+pub use config::{Config, OutputFormat};
+pub use error::{Error, Result};
+pub use report::{Issue, IssueLevel, Report, ValidationResult};
 
-pub trait Reporter {
-    fn report(&self, result: &ValidationResult) -> String;
-}
+// Module structure
+pub mod parser;      // Language parsing (JS/TS, Rust)
+pub mod validators;  // All validators
+pub mod watcher;     // File watching
+pub mod wrapper;     // Sync wrapper mode
+pub mod autofix;     // Auto-fix engine
 ```
 
-**Key Components:**
+**Key Files:**
+- `lib.rs` — Module exports and re-exports
+- `config.rs` — Configuration loading
 - `error.rs` — Unified error types
-- `report.rs` — Validation reports (JSON/SARIF)
-- `config.rs` — Configuration loading and merging
-- `rule.rs` — Rule engine (pattern matching, severity)
+- `report.rs` — Validation reports
+- `rule.rs` — Rule engine
 
-### 2. `parser` — Multi-Language Support
+### 2. `parry` — CLI Binary
 
-**Purpose:** Parse source code into ASTs for validation.
+**Package Name:** `oalacea-parry`
+**Binary Name:** `parry`
 
-| Language | Parser | Crate |
-|----------|--------|-------|
-| JavaScript/TypeScript | Oxc | `oxc_parser` |
-| Rust | Syn | `syn` |
-| Generic (fallback) | Regex/Glob | `regex`, `glob` |
-
-```rust
-pub enum ParsedCode {
-    JavaScript(oxc_ast::Program),
-    Rust(syn::File),
-    Generic(String),  // Raw text for pattern matching
-}
-```
-
-### 3. `validators` — Specialized Rules
-
-**Purpose:** Language and framework-specific validation.
-
-| Validator | Responsibility |
-|-----------|----------------|
-| `TailwindValidator` | Class existence, safety, accessibility |
-| `ImportValidator` | Alias enforcement, component paths |
-| `ComponentValidator` | shadcn/ui usage, component props |
-| `RustValidator` | Ownership, unsafe, unwrap patterns |
-| `ReactValidator` | Hooks rules, RSC patterns |
-
-```rust
-pub struct TailwindValidator {
-    config: TailwindConfig,
-    safe_list: HashSet<String>,
-    block_list: HashSet<String>,
-}
-```
-
-### 4. `watcher` — File System Events
-
-**Purpose:** Monitor files and trigger validation on changes.
-
-**Dependencies:** `notify`, `tokio`
-
-```rust
-pub struct FileWatcher {
-    debounce: Duration,
-    filters: Vec<FileFilter>,
-}
-```
-
-**Features:**
-- Debouncing (avoid spam on rapid saves)
-- Path filtering (only watch relevant files)
-- Event batching (validate multiple changes together)
-
-### 5. `wrapper` — Stdio Interceptor
-
-**Purpose:** Intercept Claude Code writes before they reach disk.
-
-**Protocol:**
-```text
-Claude Code → Parry Wrapper → [Validate] → Disk (if OK)
-                          ↓
-                    Error Report → Claude Code (retry)
-```
-
-```rust
-pub struct StdioWrapper {
-    allowed_patterns: Vec<Regex>,
-    blocked_patterns: Vec<Regex>,
-}
-```
-
-### 6. `cli` — User Interface
-
-**Purpose:** Command-line interface with `clap`.
+**Purpose:** Command-line interface using `clap`.
 
 **Commands:**
-- `parry check` — One-shot validation
-- `parry watch` — Continuous validation
-- `parry wrap -- <cmd>` — Wrap another command
-- `parry init` — Initialize config
+```bash
+parry check [paths]      # Validate codebase
+parry watch [paths]      # Watch for changes
+parry run <cmd> [args]   # Run with interception
+parry init               # Initialize config
+parry config <subcmd>    # Manage config
+```
 
 ---
 
@@ -137,9 +102,9 @@ pub struct StdioWrapper {
 ```
 Source Files
     ↓
-Parser (AST)
+Parser (AST) — parser::parser_for_path()
     ↓
-Validators (parallel)
+Validators — validators::Validators
     ↓
 Report Aggregation
     ↓
@@ -150,24 +115,24 @@ Output (JSON/SARIF/Human)
 ```
 File System
     ↓
-notify Event
+notify::RecommendedWatcher
     ↓
-Debounce
+Debounce (300ms default)
     ↓
 Validate changed files
     ↓
 Report (if errors)
 ```
 
-### Wrap Mode
+### Run Mode (New!)
 ```
-Wrapped Process Stdout
+Command (e.g., "npm run dev")
     ↓
-Parse Write Operations
+Spawn Process + Watch Files
     ↓
-Validate Content
+Validate on file changes
     ↓
-Allow/Deny Write
+Report violations (doesn't block)
 ```
 
 ---
@@ -177,10 +142,8 @@ Allow/Deny Write
 Parry uses a hierarchical configuration system:
 
 ```
-1. Global config (~/.config/parry/config.toml)
-2. Project config (.parryrc.toml)
-3. Config files (configs/*)
-4. CLI flags (override all)
+1. Project config (.parryrc.toml)
+2. CLI flags (override)
 ```
 
 ### Config Structure
@@ -191,69 +154,66 @@ strict = true
 fail_fast = false
 
 [output]
-format = "json"  # json | sarif | human
-verbose = false
+format = "human"  # json | sarif | human
 
-[[tailwind]]
+[tailwind]
 enabled = true
-config_path = "tailwind.config.ts"
+safe_list = ["p-*", "m-*"]
+block_list = ["bg-red-500"]
+max_arbitrary_values = 5
 
-[[imports]]
+[imports]
 enforce_alias = true
 alias_map = { "@/" = "./src" }
 
-[validation.rust]
+[rust]
+enabled = true
 deny_unsafe = "warn"
 warn_unwrap = true
 ```
 
 ---
 
-## 🔌 Integration Points
+## 🔌 Claude Code Integration
 
-### Claude Code
-Parry integrates via the wrapper mode or as a post-generation hook in `CLAUDE.md`:
+### Single Hook Approach
 
+**File:** `integrations/parry-post-write.cjs`
+
+```javascript
+// Triggered after Write/Edit operations
+// Validates and auto-fixes code
+node ~/.claude/hooks/parry-post-write.cjs
+```
+
+**Installation:**
 ```bash
-# In CLAUDE.md skills
-After generating code:
-parry check --fix
-```
+# 1. Copy hook
+cp integrations/parry-post-write.cjs ~/.claude/hooks/
 
-### CI/CD
-SARIF output integrates with GitHub Security:
-
-```yaml
-- name: Run Parry
-  run: parry check --output sarif --output-file results.sarif
-
-- name: Upload SARIF
-  uses: github/codeql-action/upload-sarif@v2
-  with:
-    sarif_file: results.sarif
-```
-
----
-
-## 🚀 Performance Considerations
-
-- **Parallel Validation:** Use `rayon` for parallel file processing
-- **Incremental:** Cache validation results, invalidate on change
-- **Lazy Parsing:** Only parse files that match enabled validators
-- **Streaming:** Process large files in chunks
-
----
-
-## 🧪 Testing Strategy
-
-```
-tests/
-├── unit/           # Unit tests per crate
-├── integration/    # Cross-crate tests
-├── fixtures/       # Sample code for validation
-└── benchmarks/     # Performance benchmarks
+# 2. Add to ~/.claude/settings.json
+{
+  "hooks": {
+    "PostToolUse": [{
+      "hooks": [{
+        "command": "node ~/.claude/hooks/parry-post-write.cjs",
+        "timeout": 10000
+      }],
+      "matcher": "Write|Edit"
+    }]
+  }
+}
 ```
 
 ---
 
-*Last Updated: 2025-03-16*
+## 🚀 Performance Considerations (v0.3.0)
+
+- **No IPC overhead** — Direct function calls
+- **No daemon latency** — Instant startup
+- **Single binary** — Faster installation
+- **Minimal dependencies** — Only essential crates
+
+---
+
+*Last Updated: 2025-03-22 (v0.3.0)*

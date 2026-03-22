@@ -1,28 +1,23 @@
-# Parry User Guide
+# Parry User Guide v0.3.0
 
-> Everything you need to use Parry effectively.
+> Everything you need to use Parry effectively with the simplified architecture.
 
 ## 📦 Installation
 
-### From Crates.io (Recommended)
+### From Source (Recommended during development)
 
 ```bash
-cargo install parry-cli
-```
-
-### From Source
-
-```bash
-git clone https://github.com/yourusername/parry.git
 cd parry
-cargo install --path crates/cli
+cargo install --path crates/parry
 ```
+
+This installs the `parry` binary to `~/.cargo/bin/`.
 
 ### Verify Installation
 
 ```bash
 parry --version
-# Output: parry 0.2.0
+# Output: parry 0.3.0
 ```
 
 ---
@@ -48,7 +43,6 @@ strict = true
 
 [tailwind]
 enabled = true
-config_path = "tailwind.config.ts"
 
 [imports]
 enforce_alias = true
@@ -88,12 +82,14 @@ parry check --output sarif
 
 # Auto-fix (where possible)
 parry check --fix
+
+# Strict mode
+parry check --strict
 ```
 
 **Exit Codes:**
 - `0` — No issues found
-- `1` — Issues found (in non-strict mode)
-- `2` — Errors found (in strict mode)
+- `1` — Issues found
 
 ### `parry watch`
 
@@ -106,43 +102,61 @@ parry watch
 # Watch specific directories
 parry watch src/ components/
 
-# Quiet mode (only report errors)
-parry watch --quiet
-
 # Clear screen between runs
 parry watch --clear
 ```
 
-### `parry wrap`
+### `parry run` (NEW in v0.3.0)
 
-Intercept and validate writes from another process.
+Run a command with file write interception.
 
 ```bash
-# Wrap Claude Code
-parry wrap -- claude-code
+# Run a dev server with validation
+parry run npm run dev
 
-# Wrap any command
-parry wrap -- npm run dev
+# Run any command
+parry run cargo build
 ```
 
 **How it works:**
-1. Parry spawns the wrapped process
-2. Intercepts file write operations
-3. Validates content before write
-4. Blocks writes that violate rules
+1. Parry spawns the command
+2. Watches for file changes
+3. Validates changed files
+4. Reports violations (doesn't block)
 
 ### `parry init`
 
 Initialize Parry configuration.
 
 ```bash
-# Interactive
+# Auto-detect stack
 parry init
+
+# Force overwrite
+parry init --force
 
 # Specify stack
 parry init --stack nextjs
-parry init --stack rust-axum
-parry init --stack nestjs
+parry init --stack rust
+parry init --stack vite
+```
+
+### `parry config`
+
+Manage configuration.
+
+```bash
+# Get a value
+parry config get tailwind.enabled
+
+# Set a value (coming soon)
+parry config set general.strict true
+
+# List all values
+parry config list
+
+# Validate config
+parry config validate
 ```
 
 ---
@@ -155,121 +169,37 @@ parry init --stack nestjs
 
 ```toml
 [general]
-# Enable strict mode (errors instead of warnings)
 strict = false
-
-# Stop on first error
 fail_fast = false
-
-# Maximum number of issues to report
 max_issues = 100
 
 [output]
-# Output format: human, json, sarif
 format = "human"
 
-# Include file paths in output
-show_paths = true
-
-# Color output (auto, always, never)
-color = "auto"
-
-# --- Tailwind Configuration ---
 [tailwind]
-# Enable Tailwind validation
 enabled = true
-
-# Path to Tailwind config
-config_path = "tailwind.config.ts"
-
-# Safe list: classes always allowed
-safe_list = [
-    "p-*",
-    "m-*",
-    "flex",
-    "grid"
-]
-
-# Block list: classes never allowed
-block_list = [
-    "bg-red-500",
-    "hover:*-shake"
-]
-
-# Enforce arbitrary value limits
+safe_list = ["p-*", "m-*", "flex", "grid"]
+block_list = ["bg-red-500"]
 max_arbitrary_values = 5
 
-# --- Import Configuration ---
 [imports]
-# Enforce path aliases
 enforce_alias = true
+alias_map = { "@/" = "./src" }
 
-# Alias mappings
-alias_map = {
-    "@/" = "./src",
-    "@/components" = "./components",
-    "@/lib" = "./lib"
-}
-
-# Require explicit extensions
-require_extensions = false
-
-# --- Component Configuration ---
-[components]
-# Enforce shadcn/ui usage
-enforce_shadcn = true
-
-# shadcn/ui components path
-shadcn_path = "@/components/ui"
-
-# --- Rust Configuration ---
 [rust]
-# Enable Rust validation
 enabled = true
-
-# Deny unsafe code
-deny_unsafe = "warn"  # deny | warn | allow
-
-# Warn on .unwrap()
+deny_unsafe = "warn"
 warn_unwrap = true
-
-# Enforce error handling
-enforce_result_handling = true
-
-# --- Next.js Configuration ---
-[nextjs]
-# Enable Next.js validation
-enabled = true
-
-# Enforce App Router conventions
-enforce_app_router = true
-
-# Validate page exports
-validate_page_exports = true
-
-# --- NestJS Configuration ---
-[nestjs]
-# Enable NestJS validation
-enabled = true
-
-# Enforce decorator usage
-enforce_decorators = true
-
-# Validate module imports
-validate_modules = true
 ```
 
 ### Environment Variables
 
 ```bash
-# Parry config directory
-export PARRY_CONFIG_DIR="$HOME/.config/parry"
-
 # Disable color output
 export NO_COLOR=1
 
 # Verbose output
-export PARRY_VERBOSE=1
+parry check --verbose
 ```
 
 ---
@@ -288,7 +218,6 @@ parry check || exit 1
 ### CI/CD Pipeline
 
 ```yaml
-# .github/workflows/parry.yml
 name: Parry Validation
 
 on: [push, pull_request]
@@ -298,30 +227,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Parry
-        run: cargo install parry-cli
-      - name: Run validation
-        run: parry check --output sarif --output-file results.sarif
-      - name: Upload results
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: results.sarif
+      - name: Run Parry
+        run: |
+          cargo install parry --path crates/parry
+          parry check --output sarif
 ```
 
 ### Claude Code Integration
 
-Add to your `CLAUDE.md` or skills:
-
-```markdown
-## Parry Integration
-
-After any code generation:
-1. Run `parry check`
-2. Review and fix any issues
-3. Only then commit
-
-For auto-fix: `parry check --fix`
-```
+See `integrations/README.md` for the single hook approach.
 
 ---
 
@@ -330,44 +244,20 @@ For auto-fix: `parry check --fix`
 ### Human (Default)
 
 ```
-✓ src/components/Button.tsx
-✗ src/components/Card.tsx
-  error: Invalid Tailwind class "bg-red-500"
-    --> src/components/Card.tsx:15:10
-     |
-  15 |   <div className="bg-red-500 p-4">
-     |            ^^^^^^^^^^^ use "bg-red-600" or define custom
-
-1 error, 0 warnings
+✓ All checks passed!
+Files checked: 42
+Issues found: 0
 ```
 
 ### JSON
 
 ```json
 {
-  "version": "0.2.0",
-  "summary": {
-    "errors": 1,
-    "warnings": 0,
-    "files_checked": 42
-  },
-  "issues": [
-    {
-      "level": "error",
-      "code": "tailwind-invalid-class",
-      "message": "Invalid Tailwind class",
-      "file": "src/components/Card.tsx",
-      "line": 15,
-      "column": 10,
-      "suggestion": "Use bg-red-600 or define custom"
-    }
-  ]
+  "passed": true,
+  "files_checked": 42,
+  "issues": []
 }
 ```
-
-### SARIF
-
-Standard SARIF format for tool integration.
 
 ---
 
@@ -379,14 +269,12 @@ Run `parry init` to create a config file.
 
 ### "Too many false positives"
 
-Adjust `safe_list` in your `.parryrc.toml` or set `strict = false`.
+Adjust `safe_list` in your `.parryrc.toml`.
 
-### "Slow performance"
+### "Hook not executing"
 
-1. Use `--validators` to only run needed validators
-2. Exclude node_modules/target in config
-3. Use incremental mode (coming in v0.3.0)
+Make sure the hook is in `~/.claude/hooks/` and referenced in `~/.claude/settings.json`.
 
 ---
 
-*Last Updated: 2025-03-16*
+*Last Updated: 2025-03-22 (v0.3.0)*

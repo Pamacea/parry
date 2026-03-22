@@ -1,0 +1,42 @@
+[package]
+name = "oalacea-parry-core"
+version.workspace = true
+edition.workspace = true
+description = "Core library for Parry - the agentic linter"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+toml = { workspace = true }
+regex = { workspace = true }
+glob = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+
+# Oxc parsing
+oxc_parser = { workspace = true }
+oxc_ast = { workspace = true }
+oxc_span = { workspace = true }
+oxc_syntax = { workspace = true }
+oxc_semantic = { workspace = true }
+oxc_traverse = { workspace = true }
+oxc_allocator = { workspace = true }
+
+# Rust parsing
+syn = { workspace = true }
+quote = { workspace = true }
+
+# File watching
+notify = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+proptest = { workspace = true }

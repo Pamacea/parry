@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-03-22
+
+### Breaking Changes
+- **Complete architecture redesign**: Multi-crate workspace (7 crates) simplified to 2 crates
+- **Removed daemon**: `parryd` daemon and all IPC/async infrastructure removed
+- **Removed commands**: `parryd status`, `parryd run`, `parry hook`, `parry install`
+- **New package names**: CLI renamed to `oalacea-parry`, core to `oalacea-parry-core`
+- **New import paths**: Use `oalacea_parry_core::` instead of `oparry_core::`
+
+### Added
+- **Synchronous wrapper mode**: `parry run <cmd>` — Run commands with file validation
+- **Monolithic core library**: All modules (parser, validators, watcher, wrapper, autofix) in one crate
+- **Simplified Claude Code integration**: Single `parry-post-write.cjs` hook replaces 3 separate hooks
+- **Direct validation**: No daemon dependency — instant startup, no IPC overhead
+
+### Changed
+- **Architecture**: 7 crates → 2 crates (parry-core + parry)
+- **Hook system**: 3 hook files → 1 unified hook file
+- **Module system**: External crates → Rust modules within parry-core
+- **Startup time**: Instant (no daemon spawn/check)
+
+### Removed
+- `parry-daemon` crate and binary
+- IPC/sockets/gRPC communication
+- `parryd` commands
+- Async wrapper complexity
+- Multiple hook files
+
+### Migration from v0.2.x
+
+```bash
+# Uninstall old version
+cargo uninstall parry-cli parry-daemon
+
+# Install new version
+cargo install --path crates/parry
+
+# Update Claude Code hook
+cp integrations/parry-post-write.cjs ~/.claude/hooks/
+# Update ~/.claude/settings.json to use parry-post-write.cjs
+```
+
+### Technical
+- Workspace members: `["crates/parry-core", "crates/parry"]`
+- Binary name: `parry` (from `oalacea-parry` package)
+- Core library: `oalacea-parry-core` (import as `oalacea_parry_core`)
+
 ## [0.2.3] - 2026-03-19
 
 ### Added

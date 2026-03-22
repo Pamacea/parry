@@ -1,0 +1,41 @@
+[general]
+strict = false
+fail_fast = false
+max_issues = 100
+
+[output]
+format = "human"
+show_paths = true
+color = "auto"
+
+[tailwind]
+enabled = true
+config_path = "tailwind.config.ts"
+safe_list = []
+block_list = []
+max_arbitrary_values = 5
+
+[imports]
+enforce_alias = true
+require_extensions = false
+
+[imports.alias_map]
+
+[components]
+enforce_shadcn = true
+shadcn_path = "@/components/ui"
+
+[rust]
+enabled = true
+warn_unwrap = true
+enforce_result_handling = true
+
+[nextjs]
+enabled = true
+enforce_app_router = true
+validate_page_exports = true
+
+[nestjs]
+enabled = true
+enforce_decorators = true
+validate_modules = true
