@@ -7,7 +7,6 @@ use oalacea_parry_core::{
     autofix::{AutoFixer, AutoFixConfig, FixStrategy},
 };
 use std::path::PathBuf;
-use glob::glob;
 use colored::Colorize;
 
 /// Run the `parry check` command
@@ -110,24 +109,43 @@ fn build_validators(config: &Config, validators_list: &[String]) -> Validators {
 fn collect_files(paths: &[PathBuf]) -> anyhow::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
-    let patterns = if paths.is_empty() {
-        vec!["**/*.{ts,tsx,js,jsx,rs}"]
-    } else {
-        paths.iter().map(|p| p.to_str().unwrap()).collect()
-    };
+    let extensions = ["rs", "ts", "tsx", "js", "jsx"];
 
-    for pattern in patterns {
-        if let Ok(entries) = glob(pattern) {
-            for entry in entries.flatten() {
-                if entry.is_file() {
-                    files.push(entry);
+    if paths.is_empty() {
+        // Default: search from current directory
+        for entry in walkdir::WalkDir::new(".")
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    if extensions.contains(&ext.to_str().unwrap()) {
+                        files.push(path.to_path_buf());
+                    }
                 }
             }
-        } else {
-            // Single file
-            let path = PathBuf::from(pattern);
+        }
+    } else {
+        // Process each path
+        for path in paths {
             if path.is_file() {
-                files.push(path);
+                files.push(path.clone());
+            } else if path.is_dir() {
+                // Walk directory
+                for entry in walkdir::WalkDir::new(path)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                {
+                    let p = entry.path();
+                    if p.is_file() {
+                        if let Some(ext) = p.extension() {
+                            if extensions.contains(&ext.to_str().unwrap()) {
+                                files.push(p.to_path_buf());
+                            }
+                        }
+                    }
+                }
             }
         }
     }
