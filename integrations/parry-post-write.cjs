@@ -106,20 +106,27 @@ function validateFile(filePath) {
 }
 
 /**
- * Parse tool input from Claude Code
+ * Parse tool input from Claude Code stdin
+ * PostToolUse hooks receive JSON via stdin with format:
+ * { "session_id", "tool_name", "tool_input", "tool_output", "working_directory" }
  */
-function parseToolInput() {
-  const input = process.argv[2] || '{}';
+function parseToolInputFromStdin(callback) {
+  let inputData = '';
 
-  try {
-    return JSON.parse(input);
-  } catch {
-    // If not JSON, check if it's a file path directly
-    if (fs.existsSync(input) && shouldValidate(input)) {
-      return { files: [input] };
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => { inputData += chunk; });
+  process.stdin.on('end', () => {
+    let context = {};
+    try {
+      context = JSON.parse(inputData);
+    } catch (e) {
+      if (PARRY_DEBUG) {
+        console.error('[Parry] Failed to parse stdin:', e.message);
+      }
+      return callback({ files: [] });
     }
-    return { files: [] };
-  }
+    callback(context);
+  });
 }
 
 /**
@@ -128,75 +135,72 @@ function parseToolInput() {
 function main() {
   if (PARRY_DEBUG) {
     console.error('[Parry] Post-write hook started');
-    console.error('[Parry] Args:', process.argv);
   }
 
-  // Try to get the file that was written
-  let filesToCheck = [];
+  // Read from stdin (PostToolUse format)
+  parseToolInputFromStdin((context) => {
+    const toolName = context?.tool_name || '';
+    const toolInput = context?.tool_input || {};
 
-  // Method 1: Parse from command line argument (JSON from Claude Code)
-  const toolInput = parseToolInput();
+    // Extract file path from Write/Edit operations
+    let filesToCheck = [];
 
-  // Method 2: Check for files argument
-  if (toolInput.files && Array.isArray(toolInput.files)) {
-    filesToCheck = toolInput.files.filter(shouldValidate);
-  }
+    if (toolName === 'Write' || toolName === 'Edit') {
+      const filePath = toolInput?.file_path;
+      if (filePath && shouldValidate(filePath)) {
+        filesToCheck = [filePath];
+      }
+    }
 
-  // Method 3: Check stdout for file patterns (Write/Edit output)
-  // This is a fallback when JSON parsing fails
-  if (filesToCheck.length === 0) {
-    const stdout = '';
-    // In PostToolUse, we can sometimes get the file from the tool output
-    // For now, skip if we can't determine the file
-  }
+    if (filesToCheck.length === 0) {
+      if (PARRY_DEBUG) {
+        console.error('[Parry] No files to validate (tool:', toolName, ')');
+      }
+      process.exit(0);
+      return;
+    }
 
-  if (filesToCheck.length === 0) {
     if (PARRY_DEBUG) {
-      console.error('[Parry] No files to validate');
+      console.error(`[Parry] Validating ${filesToCheck.length} file(s):`, filesToCheck);
     }
-    process.exit(0);
-  }
 
-  if (PARRY_DEBUG) {
-    console.error(`[Parry] Validating ${filesToCheck.length} file(s):`, filesToCheck);
-  }
+    let hasErrors = false;
+    let hasFixes = false;
 
-  let hasErrors = false;
-  let hasFixes = false;
+    for (const file of filesToCheck) {
+      const result = validateFile(file);
 
-  for (const file of filesToCheck) {
-    const result = validateFile(file);
+      if (!result.success) {
+        hasErrors = true;
 
-    if (!result.success) {
-      hasErrors = true;
+        // Check if fixes were applied
+        if (result.output && result.output.includes('Fixed')) {
+          hasFixes = true;
+        }
 
-      // Check if fixes were applied
-      if (result.output && result.output.includes('Fixed')) {
-        hasFixes = true;
-      }
-
-      // Print summary
-      if (result.output) {
-        console.error(`\n🔴 Parry found issues in ${path.basename(file)}:`);
-        console.error(result.output);
+        // Print summary
+        if (result.output) {
+          console.error(`\n🔴 Parry found issues in ${path.basename(file)}:`);
+          console.error(result.output);
+        }
       }
     }
-  }
 
-  if (hasFixes) {
-    console.error('\n✓ Parry auto-fixed applicable issues.');
-  }
+    if (hasFixes) {
+      console.error('\n✓ Parry auto-fixed applicable issues.');
+    }
 
-  if (hasErrors && !hasFixes) {
-    console.error('\n⚠️  Parry found issues that could not be auto-fixed.');
-    // Don't fail the hook - just warn
-  }
+    if (hasErrors && !hasFixes) {
+      console.error('\n⚠️  Parry found issues that could not be auto-fixed.');
+      // Don't fail the hook - just warn
+    }
 
-  if (PARRY_DEBUG) {
-    console.error('[Parry] Hook completed');
-  }
+    if (PARRY_DEBUG) {
+      console.error('[Parry] Hook completed');
+    }
 
-  process.exit(0); // Always succeed - don't block Claude
+    process.exit(0); // Always succeed - don't block Claude
+  });
 }
 
 // Run
